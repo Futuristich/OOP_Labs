@@ -1,95 +1,90 @@
-import tkinter as tk  # Импортируем модуль tkinter под псевдонимом tk
-from threading import Thread  # Импортируем класс Thread из модуля threading
-import keyboard  # Импортируем модуль keyboard
+import time  # Импорт модуля time для работы с временем
 
+class Keyboard:  # Определение класса Keyboard
+    def __init__(self):  # Определение конструктора класса Keyboard
+        self.keymap = {}  # Инициализация словаря keymap для хранения действий и их отмены по клавишам
+        self.history = []  # Инициализация списка history для отслеживания нажатых клавиш
 
-class VirtualKeyboard:
-    def __init__(self, root):
-        self.root = root  # Инициализируем главное окно
-        self.root.title("Virtual Keyboard")  # Устанавливаем заголовок окна
-        self.text = tk.StringVar()  # Создаем переменную для отображения текста
-        self.text.set("")  # Устанавливаем начальное значение текста
-        self.key_mapping = {'Q': 'A', 'A': 'Q'}  # Определяем отображение клавиш
-        self.text_entry = tk.Entry(root, textvariable=self.text)  # Создаем виджет для ввода текста
-        self.text_entry.pack()  # Размещаем виджет на окне
-        self.button_frame = tk.Frame(root)  # Создаем фрейм для кнопок
-        self.button_frame.pack()  # Размещаем фрейм на окне
-        self.create_keyboard_buttons()  # Создаем кнопки клавиатуры
-        self.undo_button = tk.Button(root, text="Отменить", command=self.undo_action)  # Создаем кнопку для отмены действия
-        self.undo_button.pack()  # Размещаем кнопку на окне
-        self.history = []  # Инициализируем список для хранения истории нажатых клавиш
-        self.pending_1 = False  # Переменная для отслеживания состояния ожидания ввода символа '1'
-        self.keyboard_thread = Thread(target=self.listen_keyboard)  # Создаем поток для отслеживания клавиатуры
-        self.keyboard_thread.daemon = True  # Устанавливаем поток как демонический  это поток, который выполняется в фоновом режиме и завершается, когда завершается основной поток программы.
-        self.keyboard_thread.start()  # Запускаем поток
+    def register_key(self, key, action, undo_action):  # Определение метода register_key для регистрации действий и их отмены по клавишам
+        self.keymap[key] = (action, undo_action)  # Регистрация действия и его отмены для указанной клавиши
 
-    def listen_keyboard(self):
-        # Отслеживаем нажатия клавиш клавиатуры
-        while True:
-            event = keyboard.read_event(suppress=True)
-            if event.event_type == keyboard.KEY_DOWN:
-                self.add_character(event.name)
-            elif event.event_type == keyboard.KEY_UP:
-                self.undo_action()
-    def create_keyboard_buttons(self):
-        # Создаем кнопки клавиатуры согласно раскладке
-        keyboard_layout = ['1234567890', 'QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM']
-        for row in keyboard_layout:
-            row_frame = tk.Frame(self.button_frame)  # Создаем фрейм для строки кнопок
-            row_frame.pack()  # Размещаем фрейм на окне
-            for char in row:
-                  # Создаем экземпляр класса Key с командой LaunchBrowserCommand
-                button = tk.Button(row_frame, text=char, command=lambda c=char: self.add_character(c))  # Создаем кнопку
-                button.pack(side=tk.LEFT)  # Размещаем кнопку на фрейме
+    def press_key(self, key):  # Определение метода press_key для нажатия клавиши
+        if key not in self.keymap:  # Проверка наличия клавиши в keymap
+            raise Exception("Неизвестная клавиша нажата")  # Возбуждение исключения, если клавиша не найдена
+        self.history.append(key)  # Добавление нажатой клавиши в историю
+        self.keymap[key][0]()  # Выполнение зарегистрированного действия по нажатой клавише
 
-    def add_character(self, char): # char это клавиша
-        if self.pending_1:
-            if char == '2':
-                self.text.set(self.text.get() + 'B')
-                self.pending_1 = False
-                self.history.append(char)
-            elif char == '1':
-                self.text.set(self.text.get() + '1' + char)
-                self.pending_1 = False
-                self.history.append('&')
-            else:
-                self.text.set(self.text.get() + char)
-                self.pending_1 = False
-                self.history.append(char)
+    def undo(self):  # Определение метода undo для отмены последнего действия
+        if self.history:  # Проверка наличия элементов в истории
+            last_key = self.history.pop()  # Извлечение последней нажатой клавиши из истории
+            if last_key in self.keymap:  # Проверка наличия последней клавиши в keymap
+                self.keymap[last_key][1]()  # Отмена последнего действия, связанного с последней нажатой клавишей
 
+    def is_key_registered(self, key):  # Определение метода is_key_registered для проверки регистрации клавиши
+        return key in self.keymap  # Возврат True, если клавиша зарегистрирована, и False в противном случае
 
-        else:
-            if char == '1':
-                self.pending_1 = True
-            mapped_char = self.key_mapping.get(char, char)
-            self.text.set(self.text.get() + mapped_char)
-            self.history.append(char)
+class Workflow:  # Определение класса Workflow
+    def __init__(self, keyboard):  # Определение конструктора класса Workflow
+        self.keyboard = keyboard  # Инициализация атрибута keyboard для хранения экземпляра класса Keyboard
+        self.actions = []  # Инициализация списка actions для хранения действий рабочего процесса
 
-    def undo_action(self):
-        if self.history:
-            current_text = self.text.get()
-            counter = self.history.count('1')
-            last_char = self.history.pop()
-            if last_char == '&':
-                self.text.set(current_text[:-2])
-                self.pending_1 = False
-            else:
-                self.text.set(current_text[:-1])
-                self.pending_1 = False
+    def keypress(self, key):  # Определение метода keypress для нажатия клавиши
+        self.keyboard.press_key(key)  # Вызов метода press_key экземпляра класса Keyboard
+        time.sleep(1)  # Задержка выполнения на 1 секунду
 
-    def run(self):
-        # Запускаем главное окно
-        self.root.mainloop()
+    def undo(self):  # Определение метода undo для отмены последнего действия
+        self.keyboard.undo()  # Вызов метода undo экземпляра класса Keyboard
+        time.sleep(1)  # Задержка выполнения на 1 секунду
 
+    def perform(self):  # Определение метода perform для выполнения рабочего процесса
+        for action in self.actions:  # Итерация по списку actions
+            action()  # Выполнение текущего действия
+            time.sleep(1)  # Задержка выполнения на 1 секунду
 
-def simulate_typing(keyboard, text_to_type):
-    # Симулируем нажатие клавиш клавиатуры для ввода текста
-    for char in text_to_type:
-        keyboard.add_character(char)
+    def add_action(self, action):  # Определение метода add_action для добавления действия в рабочий процесс
+        self.actions.append(action)  # Добавление действия в список actions
 
-if __name__ == "__main__":
-    root = tk.Tk()  # Создаем главное окно
-    keyboard_app = VirtualKeyboard(root)  # Создаем экземпляр виртуальной клавиатуры
-    simulation_thread = Thread(target=simulate_typing, args=(keyboard_app, "Hello!"))  # Создаем поток для симуляции ввода текста
-    simulation_thread.start()  # Запускаем поток симуляции
-    keyboard_app.run()  # Запускаем приложение виртуальной клавиатуры
+def main():  # Определение функции main
+    keyboard = Keyboard()  # Создание экземпляра класса Keyboard
+
+    keyboard.register_key("A", lambda: print("Клавиша A нажата"), lambda: None)  # Регистрация действия и его отмены для клавиши A
+
+    keyboard.register_key("Ctrl+C", lambda: print("Комбинация Ctrl+C нажата"), lambda: print("Ctrl+C действие отменено"))  # Регистрация действия и его отмены для комбинации клавиш Ctrl+C
+
+    keyboard.register_key("Ctrl+V", lambda: print("Комбинация Ctrl+V нажата"), lambda: print("Ctrl+V действие отменено"))  # Регистрация действия и его отмены для комбинации клавиш Ctrl+V
+
+    keyboard.register_key("F1", lambda: print("Клавиша F1 нажата"), lambda: None)  # Регистрация действия и его отмены для клавиши F1
+
+    keyboard.register_key("F2", lambda: print("Клавиша F2 нажата"), lambda: None)  # Регистрация действия и его отмены для клавиши F2
+
+    workflow = Workflow(keyboard)  # Создание экземпляра класса Workflow
+
+    workflow.add_action(lambda: workflow.keypress("A"))  # Добавление действия нажатия клавиши A в рабочий процесс
+
+    workflow.add_action(lambda: workflow.keypress("Ctrl+C"))  # Добавление действия нажатия комбинации клавиш Ctrl+C в рабочий процесс
+
+    workflow.add_action(lambda: workflow.keypress("Ctrl+V"))  # Добавление действия нажатия комбинации клавиш Ctrl+V в рабочий процесс
+
+    workflow.add_action(lambda: workflow.undo())  # Добавление действия отмены последнего действия в рабочий процесс
+
+    workflow.add_action(lambda: workflow.undo())  # Добавление действия отмены последнего действия в рабочий процесс
+
+    workflow.add_action(lambda: workflow.keypress("F1"))  # Добавление действия нажатия клавиши F1 в рабочий процесс
+
+    workflow.add_action(lambda: workflow.keypress("F2"))  # Добавление действия нажатия клавиши F2 в рабочий процесс
+
+    workflow.perform()  # Выполнение рабочего процесса
+
+    print("\nПереназначение клавиш и перезапуск процесса...")  # Вывод сообщения о переназначении клавиш и перезапуске процесса
+
+    keyboard.register_key("A", lambda: print("Клавиша A теперь ничего не делает"), lambda: None)  # Переназначение действия и его отмены для клавиши A
+
+    keyboard.register_key("Ctrl+C", lambda: print("Комбинация Ctrl+C теперь выводит 87 "), lambda: print("Отмена действия для Ctrl+C"))  # Переназначение действия и его отмены для комбинации клавиш Ctrl+C
+
+    keyboard.register_key("Ctrl+V", lambda: print("Комбинация Ctrl+V теперь выводит 1"), lambda: print("Отмена действия для Ctrl+V"))  # Переназначение действия и его отмены для комбинации клавиш Ctrl+V
+
+    workflow.perform()  # Выполнение рабочего процесса
+
+if __name__ == '__main__':  # Проверка, запускается ли скрипт напрямую
+
+    main()  # Вызов функции main
