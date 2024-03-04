@@ -3,8 +3,7 @@ from typing import List, Optional
 import json
 import os
 
-
-# класс представляющий пльзователя, содержит имя, логин, айди, пароль
+# Класс представляющий пользователя, содержит информацию о пользователе: идентификатор, имя, логин, пароль
 class User:
     def __init__(self, user_id: int, name: str, login: str, password: str):
         self.user_id = user_id
@@ -15,8 +14,7 @@ class User:
     def __repr__(self):
         return f"User({self.user_id}, '{self.name}', '{self.login}')"
 
-
-# абстрактный класс, определяющий основные операции:получение элементов,добавление,удаление и обновление
+# Абстрактный класс, определяющий базовые операции для работы с данными: получение, добавление, удаление, обновление
 class IDataRepository(ABC):
     @abstractmethod
     def get_all(self) -> List[User]:
@@ -34,8 +32,7 @@ class IDataRepository(ABC):
     def update(self, item: User):
         pass
 
-
-# Расширяет IDataRepository, добавляя методы для поиска пользователей по айди и имени
+# Интерфейс, расширяющий IDataRepository, добавляя методы для поиска пользователей по айди и имени
 class IUserRepository(IDataRepository):
     @abstractmethod
     def find_by_id(self, user_id: int) -> Optional[User]:
@@ -45,9 +42,7 @@ class IUserRepository(IDataRepository):
     def find_by_name(self, name: str) -> List[User]:
         pass
 
-
-# абстрактный класс для управления пользователями
-# определяющий методы для входа, выхода и проверки состояния
+# Абстрактный класс для управления пользователями, определяющий методы для входа, выхода и проверки состояния
 class IUserManager(ABC):
     @abstractmethod
     def login(self, login: str, password: str) -> bool:
@@ -61,41 +56,69 @@ class IUserManager(ABC):
     def check_auth(self) -> bool:
         pass
 
-
-# конкретная реализация IUserManager.Управляет текущим состоянием пользователя и проверяет аутентификацию
+# Реализация IUserManager. Управляет текущим состоянием пользователя и проверяет аутентификацию
 class FileUserManager(IUserManager):
     def __init__(self, user_repository: IUserRepository):
         self.user_repository = user_repository
         self.current_user = None
+        self.state_file = "user_state.json"  # Имя файла для сохранения состояния пользователя
+        self.auto_authenticate()  # Автоматическая авторизация при инициализации
 
     def login(self, login: str, password: str) -> bool:
         users = self.user_repository.get_all()
         for user in users:
             if user.login == login and user.password == password:
                 self.current_user = user
+                self.save_current_user_state()  # Сохраняем состояние пользователя после успешной авторизации
                 return True
         return False
 
     def logout(self):
         self.current_user = None
+        self.save_current_user_state()  # Сохраняем состояние пользователя после выхода
 
     def check_auth(self) -> bool:
         return self.current_user is not None
 
+    def auto_authenticate(self):
+        current_user = self.load_current_user_state()
+        if current_user:
+            self.current_user = current_user
 
-# реализация IUserRepository, использующая файл для хранения данных пользователей
-# поддерживает чтение и запись данных в формате JSON
+    def load_current_user_state(self):
+        if os.path.exists(self.state_file) and os.path.getsize(self.state_file) > 0:
+            try:
+                with open(self.state_file, "r") as file:
+                    state = json.load(file)
+                    user_id = state.get("user_id")
+                    if user_id is not None:
+                        return self.user_repository.find_by_id(user_id)
+            except json.JSONDecodeError as e:
+                print(f"Ошибка при чтении файла состояния пользователя: {e}")
+        else:
+            print("Файл состояния пользователя не найден или пуст.")
+        return None
+
+    def save_current_user_state(self):
+        with open(self.state_file, "w") as file:
+            json.dump({"user_id": self.current_user.user_id if self.current_user else None}, file)
+
+
+# Реализация UserRepository, использующая файл для хранения данных пользователей
+# Поддерживает чтение и запись данных в формате JSON
 class FileUserRepository(IUserRepository):
     def __init__(self, file_name="users.json"):
         self.file_name = file_name
         self.users = self.load_users()
 
+    # Загружает пользователей из файла JSON
     def load_users(self):
         if os.path.exists(self.file_name):
             with open(self.file_name, "r") as file:
                 return json.load(file, object_hook=lambda d: User(**d))
         return []
 
+    # Сохраняет пользователей в файл JSON
     def save_users(self):
         with open(self.file_name, "w") as file:
             json.dump(self.users, file, default=lambda o: o.__dict__)
@@ -104,6 +127,7 @@ class FileUserRepository(IUserRepository):
         return self.users
 
     def add(self, item: User):
+        # Проверка наличия пользователя с таким логином
         if any(user.login == item.login for user in self.users):
             raise ValueError("Логин уже используется")
         self.users.append(item)
@@ -126,30 +150,8 @@ class FileUserRepository(IUserRepository):
     def find_by_name(self, name: str) -> List[User]:
         return [user for user in self.users if user.name == name]
 
-
+# Имя файла для хранения состояния текущего пользователя
 STATE_FILE = "user_state.json"
-
-
-# загружает состояние текущего пользователя из файла
-def load_current_user_state(user_repository):
-    if os.path.exists(STATE_FILE) and os.path.getsize(STATE_FILE) > 0:
-        try:
-            with open(STATE_FILE, "r") as file:
-                state = json.load(file)
-                user_id = state.get("user_id")
-                if user_id is not None:
-                    return user_repository.find_by_id(user_id)
-        except json.JSONDecodeError as e:
-            print(f"Ошибка при чтении файла состояния пользователя: {e}")
-    else:
-        print("Файл состояния пользователя не найден или пуст.")
-    return None
-
-
-# cохраняет состояние пользователя в файл
-def save_current_user_state(user):
-    with open(STATE_FILE, "w") as file:
-        json.dump({"user_id": user.user_id if user else None}, file)
 
 
 def main():
@@ -157,10 +159,9 @@ def main():
     user_manager = FileUserManager(user_repository)
 
     # Попытка загрузить текущего пользователя из файла состояния
-    current_user = load_current_user_state(user_repository)
-    if current_user:
-        user_manager.current_user = current_user
-        print(f"Добро пожаловать обратно, {current_user.name}!")
+    user_manager.auto_authenticate()
+    if user_manager.current_user:
+        print(f"Добро пожаловать обратно, {user_manager.current_user.name}!")
 
     while True:
         print("\nМеню:")
@@ -189,7 +190,7 @@ def main():
                 new_user = User(user_id, name, login, password)
                 user_repository.add(new_user)
                 user_manager.current_user = new_user
-                save_current_user_state(new_user)
+                user_manager.save_current_user_state()  # Сохраняем состояние пользователя
                 print("Пользователь успешно зарегистрирован.")
             except ValueError as e:
                 print(e)
@@ -231,9 +232,9 @@ def main():
             break
         else:
             print("Неверный выбор. Пожалуйста, попробуйте снова.")
-        save_current_user_state(user_manager.current_user)
+        user_manager.save_current_user_state()  # Сохраняем состояние пользователя
 
 
+# Если файл запускается напрямую (а не импортируется), вызывается функция main()
 if __name__ == "__main__":
     main()
-
